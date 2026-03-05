@@ -5,8 +5,9 @@ from .errors import BlossomRuntimeError
 
 class ReturnSignal(Exception):
     """Raised when 'give back' is executed inside a function."""
-    def __init__(self, value):
+    def __init__(self, value, line=None):
         self.value = value
+        self.line = line
 
 
 class Environment:
@@ -26,13 +27,7 @@ class Environment:
         )
 
     def set(self, name: str, value):
-        """Update variable if it exists anywhere in the chain; else create locally."""
-        if name in self.vars:
-            self.vars[name] = value
-            return
-        if self.parent and self.parent.has(name):
-            self.parent.set(name, value)
-            return
+        """Set variable in the current scope."""
         self.vars[name] = value
 
     def define(self, name: str, value):
@@ -55,7 +50,13 @@ class Interpreter:
     # ── Public entry point ────────────────────────────────────────────────────
 
     def run(self, program: Program):
-        self._exec_stmts(program.stmts, self.global_env)
+        try:
+            self._exec_stmts(program.stmts, self.global_env)
+        except ReturnSignal as ret:
+            raise BlossomRuntimeError(
+                "'give back' can only be used inside a function.",
+                ret.line
+            )
 
     # ── Statement execution ───────────────────────────────────────────────────
 
@@ -152,7 +153,7 @@ class Interpreter:
 
         elif t == GiveBackStmt:
             value = self._eval(node.expr, env) if node.expr is not None else None
-            raise ReturnSignal(value)
+            raise ReturnSignal(value, node.line)
 
         else:
             raise BlossomRuntimeError(f"Unknown statement type: {type(node).__name__}")
